@@ -1,0 +1,7 @@
+testTable.meta [2022-05-23 06:03:06]
+
+
+name CHAR(50)
+grade CHAR(3)
+sentence VARCHAR(100)
+department VARCHAR(20)

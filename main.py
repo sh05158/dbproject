@@ -17,6 +17,14 @@ def err(errstr):
     print("Exception ocurred : ", errstr)
     exit()
 
+def lpad(i, width, fillchar='0'):
+    """입력된 숫자 또는 문자열 왼쪽에 fillchar 문자로 패딩"""
+    return str(i).rjust(width, fillchar)
+
+def rpad(i, width, fillchar='0'):
+    """입력된 숫자 또는 문자열 오른쪽에 fillchar 문자로 패딩"""
+    return str(i).ljust(width, fillchar)
+
 def stringToBinary(string):
     return ' '.join(format(ord(c), 'b') for c in string)
 
@@ -87,7 +95,7 @@ def insertRow(tableName, args):
     cols = []
     types = []
     sizes = []
-
+    colData = []
     # 우선 테이블 메타 파일 열어야됌
 
     try:
@@ -103,6 +111,12 @@ def insertRow(tableName, args):
             types.append(readData.split(' ')[1].split('(')[0])
             sizes.append(int(readData.split(' ')[1].split('(')[1].split(')')[0]))
 
+            temp = {}
+            temp["cols"] = readData.split(' ')[0]
+            temp["types"] = readData.split(' ')[1].split('(')[0]
+            temp["sizes"] = int(readData.split(' ')[1].split('(')[1].split(')')[0])
+
+            colData.append(temp)
         if readData == "":
             break
 
@@ -110,7 +124,15 @@ def insertRow(tableName, args):
     print(types)
     print(sizes)
 
-    nullBitMap = []
+    nullBitMap = ""
+    nullBitMapArr = []
+    record = ""
+    varcharOffset = 1  #맨 앞에 null bitmap 이 있기 때문에
+
+    varcharOffset += len(list(filter(lambda x: x == "VARCHAR", types))) * 4
+    varcharOffset += sum( [x["sizes"] for x in colData if x["types"] == "CHAR"] )
+
+    print("offset:",varcharOffset)
 
     for i in range(len(args)):
         #empty string or null is preprocessed
@@ -118,9 +140,29 @@ def insertRow(tableName, args):
         arg = args[i]
 
         if arg is None:
-            nullBitMap.append(1)
+            nullBitMap += "0"
         else:
-            nullBitMap.append(0)
+            nullBitMap += "1"
+
+        if types[i] == "CHAR":
+            record += rpad(arg,sizes[i],'0')
+        elif types[i] == "VARCHAR":
+            record += str(varcharOffset)+lpad(str(len(arg)),2,'0')
+            varcharOffset += len(arg)
+    # args = ["minjoon", "A+", "hello world this is minjoon", "SW"]
+    for i in range(len(nullBitMap)):
+        if nullBitMap[i] == "0":
+            nullBitMapArr.append(0)
+        else:
+            nullBitMapArr.append(1)
+
+
+    print("null bit map ",bytes(nullBitMapArr))
+
+
+    print(record.encode())
+
+
 
 
 # file = open("sample.bin", "wb")

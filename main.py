@@ -14,14 +14,6 @@ sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 
 SLOT_SIZE = 4000
 
-# CREATE TABLE tableName(tableName CHAR(50) grade CHAR(3) sentence VARCHAR(100) department VARCHAR(20))
-# INSERT INTO tableName VALUES ("minjoon","A+","hello world this is minjoon","SW")
-# SELECT * FROM tableName WHERE name = "minjoon" AND grade = "A+" AND department = "SW"
-
-# CREATE TABLE test2(name CHAR(10) grade CHAR(3) sentence VARCHAR(50))
-
-# SELECT name grade FROM tableName
-
 def err(errstr):
     print("Exception ocurred : ", errstr)
     exit()
@@ -44,29 +36,28 @@ def processQuery(query):
         argsArr = query[query.find("(")+1:].split(") ")
 
         for arg in argsArr:
+            try:
+                argName = arg.split(" ")[0]
+                argPref = arg.split(" ")[1]
+                if argPref[-1] != ")":
+                    argPref = argPref + ")"
+                if argPref[-1] == ")" and argPref[-2] == ")":
+                    argPref = argPref[:-1]
 
-            argName = arg.split(" ")[0]
-            argPref = arg.split(" ")[1]
-            if argPref[-1] != ")":
-                argPref = argPref + ")"
-            if argPref[-1] == ")" and argPref[-2] == ")":
-                argPref = argPref[:-1]
-
-            args.append((argName,argPref))
+                args.append((argName,argPref))
+            except:
+                print('',end='')
 
         print( createTable(tableName, args) )
 
     elif "INSERT INTO" in query.upper():
         tableName = query.split("INSERT INTO ")[1].split("VALUES")[0].strip()
         args = query.split("VALUES")[1].strip().split("(")[1].split(")")[0].split(",")
-        print(args)
         newArgs = []
         for arg in args:
-            print(arg)
-            # arg = arg.strip()
             arg = arg.strip('"')
             newArgs.append(arg)
-        print(newArgs)
+
         print( insertRow(tableName, args) )
 
     elif "SELECT " in query.upper():
@@ -84,7 +75,26 @@ def processQuery(query):
             value = cond.split("=")[1].strip().strip('"')
             condsArr.append((colName,value))
 
-        print( selectTable(tableName,selectCols, selectCols[0]=="*", condsArr) )
+        result = ( selectTable(tableName,selectCols, selectCols[0]=="*", condsArr) )
+
+        print( len(result),"Rows Selected." )
+
+        if len(result) <= 0:
+            return
+
+        cols = result[0].keys()
+        for col in cols:
+            print("%40s " %(col), end='')
+        print("")
+        
+        for col in cols:
+            print("-------------------------------------------",end="")
+        print("")
+
+        for res in result:
+            for col in cols:
+                print("%40s " %(res[col]), end='')
+            print("")
 
 
 
@@ -184,8 +194,13 @@ def insertRow(tableName, args):
         #convert to variable length record
         arg = args[i]
 
-        if arg is None:
+        if len(arg) > sizes[i]:
+            err("column "+cols[i]+" exceed length limit "+str(sizes[i])+"  ("+str(len(arg))+")")
+
+        if arg is None or arg == "NULL":
             nullBitMap += "1"
+            arg = ''
+            args[i] = ''
         else:
             nullBitMap += "0"
 
@@ -208,8 +223,10 @@ def insertRow(tableName, args):
             nullBitMapArr.append(1)
 
 
+    nullBitMap = rpad(nullBitMap,8,'0')
+
+
     nullDecimal = chr(int(nullBitMap,2)+1)
-    
 
     
     record = nullDecimal + record
@@ -287,7 +304,7 @@ def selectTable(tableName, columns, selectAll=True, conditions=[]):
 
             slot.seek(i)
             readData = slot.read(2)
-            currRecordPointer = int(struct.unpack("H",readData)[0])
+            currRecordPointer = int(struct.unpack("H",readData)[0])+1
             nextRecordPointer = -1
 
             if i < SLOT_SIZE-3:
@@ -298,21 +315,17 @@ def selectTable(tableName, columns, selectAll=True, conditions=[]):
             if nextRecordPointer == 0:
                 nextRecordPointer = SLOT_SIZE
             
-            if currRecordPointer == 0:
+            if currRecordPointer <= 1:
                 break
             
-
-
             slot.seek(currRecordPointer-1)
             buf = slot.read(abs(nextRecordPointer-currRecordPointer))
-
             temp = abs(nextRecordPointer-currRecordPointer)
-            columnData = struct.unpack("%ds" % temp, buf)[0].decode()+""
-
+            columnData = str(buf.decode())
+            nullBitMap = lpad(str(bin(buf[0]-1)).split('0b')[1],8,'0')
             columnIter = 1
 
             for idx, type in enumerate(types):
-
                 if cols[idx] not in columns and selectAll == False:
                     if type == "CHAR":
                         columnIter += sizes[idx]
@@ -323,20 +336,27 @@ def selectTable(tableName, columns, selectAll=True, conditions=[]):
                 else:
                     #리턴 데이터에 넣어 줘야되는 컬럼 
                     if type == "CHAR":
-                        tempReturnCol[cols[idx]]=columnData[columnIter:columnIter+sizes[idx]]
-                        columnIter += sizes[idx]
+                        if nullBitMap[idx] == "1":
+                            tempReturnCol[cols[idx]]="NULL"
+                        else:
+                            tempReturnCol[cols[idx]]=columnData[columnIter:columnIter+sizes[idx]]
+                            columnIter += sizes[idx]
                     elif type == "VARCHAR":
-                        startIdx = int(columnData[columnIter:columnIter+2])
-                        size = int(columnData[columnIter+2:columnIter+4])
-                        tempReturnCol[cols[idx]]=columnData[startIdx:startIdx+size]
-                        columnIter += 4
+                        if nullBitMap[idx] == "1":
+                            tempReturnCol[cols[idx]]="NULL"
+                            columnIter += 4
+                        else:
+                            startIdx = int(columnData[columnIter:columnIter+2])
+                            size = int(columnData[columnIter+2:columnIter+4])
+                            tempReturnCol[cols[idx]]=columnData[startIdx:startIdx+size]
+                            columnIter += 4
 
             flag = False
 
             for cond in conditions:
-                if tempReturnCol[cond[0]] != cond[1]:
+                # print(str(cond)+"@"+tempReturnCol[cond[0]]+"@"+cond[1]+"@" )
+                if tempReturnCol[cond[0]].rstrip() != cond[1]:
                     #조건 하나라도 안맞으면 안넣고 continue
-                    i += 2
                     flag = True
                     break
 
@@ -367,13 +387,14 @@ def insertSlot(tableName, slotNum, record):
 
 
     emptyPointer = -1
-    slot.seek(SLOT_SIZE-1) ##마지막으로 커서를 옮겨서 한 바이트씩 읽어서 \0이 아닐때까지 읽는다 
+    slot.seek(SLOT_SIZE) ##마지막으로 커서를 옮겨서 한 바이트씩 읽어서 \0이 아닐때까지 읽는다 
 
     for i in range(0,SLOT_SIZE-len(record)-2-1-count*2): #레코드 포인터가 2바이트라서 2를 추가적으로 뺐다( 레코드 포인터의 여유 공간까지 고려 )
-        slot.seek(SLOT_SIZE-1-i)
+        slot.seek(SLOT_SIZE-i)
 
         readData = slot.read(1)
-        if readData.decode() == '\x00':
+
+        if readData == b'\x00':
             emptyPointer = SLOT_SIZE-i
             if i != 0:
                 emptyPointer += 1
@@ -420,12 +441,13 @@ def insertSlot(tableName, slotNum, record):
     
     return 1
     
-
-
-
 if __name__ != "__main__":
     exit()
 
+queryString = ""
+for idx, arg in enumerate(sys.argv):
+    if idx == 0:
+        continue
+    queryString += arg+" "
 
-processQuery(sys.argv[1])
-
+processQuery(queryString)

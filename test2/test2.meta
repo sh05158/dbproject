@@ -1,0 +1,6 @@
+test2.meta [2022-05-25 08:59:28]
+
+
+name CHAR(10)
+grade CHAR(3)
+sentence VARCHAR(50)

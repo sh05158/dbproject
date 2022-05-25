@@ -15,8 +15,11 @@ sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 SLOT_SIZE = 4000
 
 # CREATE TABLE tableName(tableName CHAR(50) grade CHAR(3) sentence VARCHAR(100) department VARCHAR(20))
-# INSERT into tableName values("minjoon","A+","hello world this is minjoon","SW")
-# SELECT * FROM tableName WHERE name = "minjoon" AND grade = "A+" OR department = "SW"
+# INSERT INTO tableName VALUES ("minjoon","A+","hello world this is minjoon","SW")
+# SELECT * FROM tableName WHERE name = "minjoon" AND grade = "A+" AND department = "SW"
+
+# CREATE TABLE test2(name CHAR(10) grade CHAR(3) sentence VARCHAR(50))
+
 # SELECT name grade FROM tableName
 
 def err(errstr):
@@ -35,9 +38,54 @@ def stringToBinary(string):
     return ' '.join(format(ord(c), 'b') for c in string)
 
 def processQuery(query):
-    print(query)
-    # createTable("a","a")
-    insertRow("a", "a")
+    if "CREATE TABLE " in query.upper():
+        tableName = query.split("CREATE TABLE ")[1].split("(")[0].strip()
+        args = []
+        argsArr = query[query.find("(")+1:].split(") ")
+
+        for arg in argsArr:
+
+            argName = arg.split(" ")[0]
+            argPref = arg.split(" ")[1]
+            if argPref[-1] != ")":
+                argPref = argPref + ")"
+            if argPref[-1] == ")" and argPref[-2] == ")":
+                argPref = argPref[:-1]
+
+            args.append((argName,argPref))
+
+        print( createTable(tableName, args) )
+
+    elif "INSERT INTO" in query.upper():
+        tableName = query.split("INSERT INTO ")[1].split("VALUES")[0].strip()
+        args = query.split("VALUES")[1].strip().split("(")[1].split(")")[0].split(",")
+        print(args)
+        newArgs = []
+        for arg in args:
+            print(arg)
+            # arg = arg.strip()
+            arg = arg.strip('"')
+            newArgs.append(arg)
+        print(newArgs)
+        print( insertRow(tableName, args) )
+
+    elif "SELECT " in query.upper():
+        tableName = query.split("FROM ")[1].split("WHERE")[0].strip()
+        selectCols = query.split("SELECT")[1].split("FROM")[0].strip().split(" ")
+        try:
+            conds = query.split("WHERE")[1].strip().split("AND")
+        except:
+            conds = []
+
+        condsArr = []
+
+        for cond in conds:
+            colName = cond.split("=")[0].strip()
+            value = cond.split("=")[1].strip().strip('"')
+            condsArr.append((colName,value))
+
+        print( selectTable(tableName,selectCols, selectCols[0]=="*", condsArr) )
+
 
 
 def createDirectory(directory):
@@ -49,8 +97,6 @@ def createDirectory(directory):
 
 
 def createTable(tableName, args):
-    tableName = "testTable"
-    args = [("name", "CHAR(50)"), ("grade", "CHAR(3)"), ("sentence", "VARCHAR(100)"), ("department", "VARCHAR(20)")]
 
     # 메타메타 파일 열자
 
@@ -70,7 +116,6 @@ def createTable(tableName, args):
 
         if readData != "":
             currTableName = readData.split(".meta")[0]
-            print(currTableName)
             if tableName == currTableName:
                 err("tableName already exists")
         else:
@@ -92,10 +137,10 @@ def createTable(tableName, args):
     for arg in args:
         meta.writelines("\n" + arg[0] + " " + arg[1])
 
+    return tableName+" is created successfully."
+
 
 def insertRow(tableName, args):
-    tableName = "testTable"
-    args = ["minjoon", "A+", "hello world this is minjoon", "SW"]
 
     # 메타에 쓰이는 3종 세트
     cols = []
@@ -126,10 +171,6 @@ def insertRow(tableName, args):
         if readData == "":
             break
 
-    print(cols)
-    print(types)
-    print(sizes)
-
     nullBitMap = ""
     nullBitMapArr = []
     record = ""
@@ -138,20 +179,18 @@ def insertRow(tableName, args):
     varcharOffset += len(list(filter(lambda x: x == "VARCHAR", types))) * 4
     varcharOffset += sum( [x["sizes"] for x in colData if x["types"] == "CHAR"] )
 
-    print("offset:",varcharOffset)
-
     for i in range(len(args)):
         #empty string or null is preprocessed
         #convert to variable length record
         arg = args[i]
 
         if arg is None:
-            nullBitMap += "0"
-        else:
             nullBitMap += "1"
+        else:
+            nullBitMap += "0"
 
         if types[i] == "CHAR":
-            record += rpad(arg,sizes[i],'0')
+            record += rpad(arg,sizes[i],' ')
         elif types[i] == "VARCHAR":
             record += str(varcharOffset)+lpad(str(len(arg)),2,'0')
             varcharOffset += len(arg)
@@ -169,9 +208,7 @@ def insertRow(tableName, args):
             nullBitMapArr.append(1)
 
 
-    print("null bit map ",bytes(nullBitMapArr))
-
-    nullDecimal = chr(int(nullBitMap,2))
+    nullDecimal = chr(int(nullBitMap,2)+1)
     
 
     
@@ -183,43 +220,16 @@ def insertRow(tableName, args):
     while True:
         if insertSlot(tableName, slotCurr, record) == 1: #성공했을 시 루프 빠져나간다..
             break
-        print(slotCurr)
         slotCurr += 1
 
-
-def readSlot(tableName):
-    tableName = "testTable"
-    args = ["minjoon", "A+", "hello world this is minjoon", "SW"]
-
-    # 메타에 쓰이는 3종 세트
-    cols = []
-    types = []
-    sizes = []
-    colData = []
-    # 우선 테이블 메타 파일 열어야됌
-
-    try:
-        reader = open("./" + tableName + "/" + tableName + ".meta", "r")
-    except:
-        err(tableName + " meta not exists")
+    return tableName+ " inserted 1 row successfully."
 
 def checkSlot(tableName, slotNum):
-    # try:
-    #     slot = open("./" + tableName + "/slot" + lpad(slotNum,3,'0') + ".bin", "r")
-    # except:
-    #     return False
-    #     err("table "+ tableName+ " slot "+slotNum +" not exists ")
-    # slot.close()
-    # return True
     return exists("./" + tableName + "/slot" + lpad(slotNum,3,'0') + ".bin")
 
 def createSlot(tableName, slotNum):
-    tableName="testTable"
-    # slotNum=0
-    
     slot = open("./" + tableName + "/slot" + lpad(slotNum,3,'0') + ".bin", "wb+")
 
-    # slot.write(lpad("",4000,'0').encode())
     slot.seek(0)
     slot.write(lpad("\0",4000,'\0').encode())
 
@@ -229,11 +239,9 @@ def createSlot(tableName, slotNum):
     slot.flush()
     slot.close()
 
-    print("creat slot "+tableName+"/ "+str(slotNum))
 
-def selectTable(tableName):
-    tableName = "testTable"
-    args = ["minjoon", "A+", "hello world this is minjoon", "SW"]
+def selectTable(tableName, columns, selectAll=True, conditions=[]):
+    returnData = []
 
     # 메타에 쓰이는 3종 세트
     cols = []
@@ -264,23 +272,87 @@ def selectTable(tableName):
         if readData == "":
             break
 
-    print(cols)
-    print(types)
-    print(sizes)
+    slotNum = 0
+
+    while True:
+        try:
+            slot = open("./" + tableName + "/slot" + lpad(slotNum,3,'0') + ".bin", "rb")
+        except:
+            break
+
+        recordPointer = -1
+        i = 1
+        while i < SLOT_SIZE-1:
+            tempReturnCol = {}
+
+            slot.seek(i)
+            readData = slot.read(2)
+            currRecordPointer = int(struct.unpack("H",readData)[0])
+            nextRecordPointer = -1
+
+            if i < SLOT_SIZE-3:
+                slot.seek(i+2)
+                readData2 = slot.read(2)
+                nextRecordPointer = int(struct.unpack("H",readData2)[0])
+
+            if nextRecordPointer == 0:
+                nextRecordPointer = SLOT_SIZE
+            
+            if currRecordPointer == 0:
+                break
+            
+
+
+            slot.seek(currRecordPointer-1)
+            buf = slot.read(abs(nextRecordPointer-currRecordPointer))
+
+            temp = abs(nextRecordPointer-currRecordPointer)
+            columnData = struct.unpack("%ds" % temp, buf)[0].decode()+""
+
+            columnIter = 1
+
+            for idx, type in enumerate(types):
+
+                if cols[idx] not in columns and selectAll == False:
+                    if type == "CHAR":
+                        columnIter += sizes[idx]
+                    elif type == "VARCHAR":
+                        columnIter += 4
+                    #생략해도 되는 컬럼.. 값 리턴 안해줘도 된다.
+                    continue
+                else:
+                    #리턴 데이터에 넣어 줘야되는 컬럼 
+                    if type == "CHAR":
+                        tempReturnCol[cols[idx]]=columnData[columnIter:columnIter+sizes[idx]]
+                        columnIter += sizes[idx]
+                    elif type == "VARCHAR":
+                        startIdx = int(columnData[columnIter:columnIter+2])
+                        size = int(columnData[columnIter+2:columnIter+4])
+                        tempReturnCol[cols[idx]]=columnData[startIdx:startIdx+size]
+                        columnIter += 4
+
+            flag = False
+
+            for cond in conditions:
+                if tempReturnCol[cond[0]] != cond[1]:
+                    #조건 하나라도 안맞으면 안넣고 continue
+                    i += 2
+                    flag = True
+                    break
+
+            if flag == False:
+                returnData.append(tempReturnCol)
+            i += 2
+        slotNum += 1
+
+    return returnData
 
 
 #특정 슬롯에 레코드를 삽입하는 함수, 공간이 부족해서 실패하면 -1리턴 
-def insertSlot(tableName, slotNum, record):
-    tableName="testTable"
-    # slotNum=0
-    
+def insertSlot(tableName, slotNum, record): 
     if checkSlot(tableName, slotNum) == False:
         #없으면 만들자
-        print("없음")
         createSlot(tableName, slotNum)
-    else:
-        print("있음")
-
 
     try:
         slot = open("./" + tableName + "/slot" + lpad(slotNum,3,'0') + ".bin", "rb+")
@@ -288,18 +360,6 @@ def insertSlot(tableName, slotNum, record):
         err("table "+ tableName+ " slot "+slotNum +" not exists ")
 
     #빈공간 찾아야됌
-    
-    # for i in range(0,SLOT_SIZE):
-    #     slot.seek(i)
-
-    #     readData = slot.read(1)
-
-    #     print(readData.decode())
-    
-    # print("끝")
-    # slot.flush()
-    # slot.close()
-    # return 1
 
     slot.seek(0)
     count = slot.read(1)
@@ -313,9 +373,7 @@ def insertSlot(tableName, slotNum, record):
         slot.seek(SLOT_SIZE-1-i)
 
         readData = slot.read(1)
-        # print(str(i)+"readData @@"+readData.decode()+"@@")
         if readData.decode() == '\x00':
-            # print("찾음!"+str(SLOT_SIZE-1-i))
             emptyPointer = SLOT_SIZE-i
             if i != 0:
                 emptyPointer += 1
@@ -334,27 +392,19 @@ def insertSlot(tableName, slotNum, record):
     recordPointer = -1
     i = 1
     while i < SLOT_SIZE-1:
-    # for i in range(1,SLOT_SIZE):
         slot.seek(i)
         readData = slot.read(2)
         data = int(struct.unpack("H",readData)[0])
-        # print("seek "+str(i) +"@@"+str(readData)+"@@")
-        
+
         if data == 0:
-            print("찾음22!")
             recordPointer = i
             break
         i += 2
     
-    print("레코드 포인터 "+str(recordPointer))
 
     if recordPointer == -1:
         err("슬롯 공간은 있는데 레코드 포인터가 없는 말도 안되는 경우")
-    # print("startpoint : "+bin(startPoint))
-    # print(bitarray(bin(startPoint)[2:]).tobytes())
-    # print(binify(startPoint))
     slot.seek(recordPointer)
-    # slot.write( binify(startPoint) )
     slot.write( struct.pack('H',startPoint)  )
 
 
@@ -371,25 +421,11 @@ def insertSlot(tableName, slotNum, record):
     return 1
     
 
-def binify(x):
-    h = hex(x)[2:].rstrip('L')
-    return binascii.unhexlify('0'*(4-len(h))+h)
-    
-
-# file = open("sample.bin", "wb")
-# file.write("hello world".encode())
-# file.write(bytes([33,34]))
-# file.close()
 
 
 if __name__ != "__main__":
     exit()
 
-# createSlot("test",1)
-
-# print("hello")
 
 processQuery(sys.argv[1])
-
-# data = re.sub(' ','',stringToBinary("hello world"))
 

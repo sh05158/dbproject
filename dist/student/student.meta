@@ -1,0 +1,7 @@
+student.meta [2022-05-26 08:26:37]
+
+
+name CHAR(10)
+grade CHAR(3)
+department VARCHAR(20)
+introduction VARCHAR(50))')

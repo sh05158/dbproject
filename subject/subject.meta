@@ -1,0 +1,7 @@
+subject.meta [2022-05-26 12:07:32]
+
+
+name VARCHAR(30)
+semester VARCHAR(10)
+department VARCHAR(20)
+introduction VARCHAR(50)

@@ -2,3 +2,5 @@ JOON DB meta.meta [2022-05-25 18:03:46]
 
 
 student.meta ./student/
+subject.meta ./subject/
+student_test.meta ./student_test/

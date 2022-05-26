@@ -16,7 +16,7 @@ SLOT_SIZE = 4000
 
 def err(errstr):
     print("Exception ocurred : ", errstr)
-    exit()
+    sys.exit(0)
 
 def lpad(i, width, fillchar='0'):
     """입력된 숫자 또는 문자열 왼쪽에 fillchar 문자로 패딩"""
@@ -442,7 +442,7 @@ def insertSlot(tableName, slotNum, record):
     return 1
     
 if __name__ != "__main__":
-    exit()
+    sys.exit(0)
 
 queryString = ""
 for idx, arg in enumerate(sys.argv):
